@@ -14,9 +14,9 @@
 | 包名 | `@linxin666/dsh-remote-web-ui` |
 | 源位置 | `dsh-web` 仓 → `packages/dsh-remote-web-ui` |
 | 源版本 | `v0.4.13`（tag `v0.4.13`） |
-| 本仓路径 | `packages/dsh-remote-web-ui`（保持原路径，未改动源码） |
+| 本仓路径 | `packages/dsh-remote-web-ui`（保持原路径；仅 1 处源码修复，见下文） |
 
-为保持**零源码改动**，仓库结构保留了上游的两层形态：
+为让构建关系与上游一致，仓库结构保留了它的两层形态：
 
 ```
 .
@@ -25,8 +25,10 @@
 ├── shared/                      # 上游根部的构建辅助（原样拷贝）
 │   ├── tsdown.client.ts         # 客户端 bundle 预设，被 tsdown 配置引用
 │   └── web-platform.ts          # 平台模块表，前缀导入
+├── scripts/
+│   └── fix-remote-web-ui-encoding.sh   # 给「已安装的 npm 预构建包」打压缩修复（见下文）
 └── packages/
-    └── dsh-remote-web-ui/       # 插件本体，与上游 v0.4.13 逐字节一致
+    └── dsh-remote-web-ui/       # 插件本体（仅 1 处源码修复，见下文）
 ```
 
 保留 `shared/` 的原因：包内 `tsdown.config.ts` 与 `tsdown.prepare.config.ts` 都以
@@ -44,7 +46,7 @@
 SDK 类型全部从 npm 上的 `@deepseek-ai/*` 解析，**不依赖宿主源码检出**——包内 `tsconfig.json`
 的注释对此有明确约定。
 
-## 与上游的差异（构建层 3 处，不触碰插件源码）
+## 与上游的差异（构建层 3 处 + 源码修复 1 处）
 
 1. **`shared/` 被复制进本仓**。上游它位于单体仓根部、被多个包共享；这里只搬运被本包
    `tsdown` 配置实际引用的两个文件，层级不变，因此 `../../shared/...` 的相对导入与
@@ -141,6 +143,64 @@ dsh plugin --profile <profile> add link:$(pwd)/packages/dsh-remote-web-ui
 ```bash
 dsh plugin --profile <profile> add @linxin666/dsh-remote-web-ui@0.4.13
 ```
+
+### 装 npm 预构建包时，补丁要单独打到 `lib/index.js`
+
+源码修复只对 `pnpm build` 出来的产物生效。若走上面的方式 B，装的是作者预构建的 `lib/`，
+里面仍是未修复的版本；插件升级也会把 `lib/index.js` 覆盖回原样。此时用仓内脚本对
+**已安装的那份副本**打补丁：
+
+```bash
+bash scripts/fix-remote-web-ui-encoding.sh                # 默认 desktop profile
+bash scripts/fix-remote-web-ui-encoding.sh <profile>      # 指定 profile
+DRY_RUN=1 bash scripts/fix-remote-web-ui-encoding.sh      # 只校验，不写入
+```
+
+作用于 `$DSH_HOME/profiles/<profile>/node_modules/@linxin666/dsh-remote-web-ui/lib/index.js`：
+
+- **幂等**：已含 `LOCAL PATCH (encoding fix)` 标记就直接退出，不会叠两次
+- **三锚点校验**：函数定义、循环内 `continue`、`headers.host = host` 各须出现且仅出现 1 次；
+  插件内部结构一变就退出码 2，宁可不动也不错改
+- **写前备份** `index.js.bak-encfix`
+- **写入前复核行数只增 8 行**，不符即退出码 4，原文件不动
+
+打完重启 DSH（或在插件面板里重载）生效。与源码修复是同一件事的两种落点：
+一个编译进产物，一个直接改产物。
+
+### 装上了但侧栏没有「远程访问」入口
+
+插件自带的 `packages/dsh-remote-web-ui/cordis.patch.yml` 插入的行 id 是 `remote-web-ui`。
+profile 的 `~/.dsh/profiles/<profile>/cordis.patch.yml` 里若写成别的 id（例如
+`web-ui-remote-web-ui`），patch 层对不上，`/api/pair/status` 会一直返回
+`phase: "lan-required"`、`lanAvailable: false`，侧栏也没有入口——表现得就像「装上了但没生效」。
+两处 id 必须一致，`config` 才会被读取：
+
+```yaml
+- id: remote-web-ui
+  name: '@linxin666/dsh-remote-web-ui'
+  config:
+    tokenTtlMs: 91622400000
+    idleExpireMs: 91622400000
+    autoTunnel: true
+    relay: true
+    lanBind: true
+    requirePairingForLan: true
+    enabled: true
+```
+
+改 profile 的 patch 层前先备份原文件，改完热生效，一般不用重启。
+
+### 局域网直连被防火墙挡住
+
+插件会尝试自建入站规则 `remote-web-ui (auto)`，但 `netsh advfirewall` 要管理员权限，
+普通会话会被拒（`请求的操作需要提升`）。手机打 `http://<局域网IP>:<端口>` 不通时，
+以管理员身份开 PowerShell 跑一次（端口以面板 `forward listening` 显示的实际值为准）：
+
+```powershell
+netsh advfirewall firewall add rule name="remote-web-ui (auto)" dir=in action=allow protocol=TCP localport=55901
+```
+
+不加也能用，走公网 relay 域名即可。
 
 ### 已验证
 
