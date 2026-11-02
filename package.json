@@ -1,0 +1,19 @@
+{
+  "name": "dsh-remote-web-ui-standalone",
+  "private": true,
+  "version": "0.4.13",
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "description": "Standalone workspace for @linxin666/dsh-remote-web-ui, split out of the dsh-web monorepo",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "node -e \"require('fs').rmSync('packages/dsh-remote-web-ui/lib',{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "lightningcss": "^1.30.2",
+    "simple-icons": "^13.21.0",
+    "tsdown": "^0.22.2"
+  }
+}

@@ -1,0 +1,18 @@
+packages:
+  - 'packages/*'
+
+# pnpm 11 使用映射形式放行构建脚本（旧的数组式 onlyBuiltDependencies 已被取代）。
+# 只有 cloudflared 需要放行：它的 postinstall 下载平台二进制，不放行则公网隧道静默不可用。
+# 其余原生包只是 DSH SDK 的传递依赖，本包的构建、测试与运行都不需要，保持拦截。
+allowBuilds:
+  cloudflared: true
+  '@deepseek-ai/dsh-subprocess-local': false
+  '@google/genai': false
+  koffi: false
+  node-pty: false
+  protobufjs: false
+
+# pnpm 11 的发布时间门禁会拒绝刚发布的预发布版本（@deepseek-ai/* 的 rc 系列）。
+minimumReleaseAgeExclude:
+  - '@deepseek-ai/*'
+  - '@linxin666/*'
