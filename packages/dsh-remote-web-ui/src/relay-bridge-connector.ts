@@ -101,14 +101,24 @@ export function bridgeUpstreamHost(frameHost: unknown, hostname: string): string
 /**
  * The upstream headers of one bridged request: the phone's own, minus the hops
  * this transport owns, with the public `Host` put back explicitly.
+ *
+ * `accept-encoding` is dropped and replaced by `identity` rather than forwarded.
+ * The relay worker re-compresses the bridged body with the algorithm the client
+ * negotiated while passing this request's own `content-encoding` back on the
+ * response, so a gzip body addressed to a br/zstd browser arrives double
+ * compressed and every page renders as decode noise. Asking the local origin
+ * for a plain body leaves exactly one compression step — the edge's — and the
+ * edge writes the matching header itself.
  */
 export function bridgeUpstreamHeaders(frameHeaders: unknown, host: string): Record<string, string> {
   const headers: Record<string, string> = {}
   for (const [name, value] of headerPairs(frameHeaders)) {
     if (BRIDGE_HOP_BY_HOP.has(name.toLowerCase())) continue
+    if (name.toLowerCase() === 'accept-encoding') continue
     headers[name] = value
   }
   headers.host = host
+  headers['accept-encoding'] = 'identity'
   return headers
 }
 

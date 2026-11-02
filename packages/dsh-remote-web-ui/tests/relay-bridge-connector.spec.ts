@@ -273,7 +273,21 @@ describe('the bridge connector forwards what the phone dialed', () => {
     expect(bridgeUpstreamHeaders([['host', '127.0.0.1:55220'], ['accept', 'text/html']], HOSTNAME)).toEqual({
       accept: 'text/html',
       host: HOSTNAME,
+      'accept-encoding': 'identity',
     })
+  })
+
+  it('a bridged request never carries the phone compression method upstream', () => {
+    // Given a phone that negotiated every algorithm Safari knows
+    // When the connector builds the upstream headers
+    // Then the phone's accept-encoding is dropped and identity is forced, so the
+    // local origin answers in plain text and the edge is the only compressor
+    const headers = bridgeUpstreamHeaders(
+      [['accept-encoding', 'gzip, deflate, br, zstd'], ['accept', 'text/html']],
+      HOSTNAME,
+    )
+    expect(headers['accept-encoding']).toBe('identity')
+    expect(Object.keys(headers).filter((name) => name.toLowerCase() === 'accept-encoding')).toHaveLength(1)
   })
 
   it('operator reconnects with the same long-lived credential and no ticket', async () => {
