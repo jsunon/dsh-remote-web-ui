@@ -1,3 +1,5 @@
-lib/
+# lib/ 不再整体忽略：仓库自带预构建产物，克隆后即可被 DSH 直接加载（见根 README）。
+# 只忽略补丁脚本产生的原件备份。
+lib/*.bak-*
 node_modules/
 *.tsbuildinfo

@@ -28,7 +28,7 @@
 ├── scripts/
 │   └── fix-remote-web-ui-encoding.sh   # 给「已安装的 npm 预构建包」打压缩修复（见下文）
 └── packages/
-    └── dsh-remote-web-ui/       # 插件本体（仅 1 处源码修复，见下文）
+    └── dsh-remote-web-ui/       # 插件本体（1 处源码修复 + 随仓预构建 lib/）
 ```
 
 保留 `shared/` 的原因：包内 `tsdown.config.ts` 与 `tsdown.prepare.config.ts` 都以
@@ -46,7 +46,7 @@
 SDK 类型全部从 npm 上的 `@deepseek-ai/*` 解析，**不依赖宿主源码检出**——包内 `tsconfig.json`
 的注释对此有明确约定。
 
-## 与上游的差异（构建层 3 处 + 源码修复 1 处）
+## 与上游的差异（构建层 3 处 + 源码修复 1 处 + 预构建产物入库）
 
 1. **`shared/` 被复制进本仓**。上游它位于单体仓根部、被多个包共享；这里只搬运被本包
    `tsdown` 配置实际引用的两个文件，层级不变，因此 `../../shared/...` 的相对导入与
@@ -59,8 +59,12 @@ SDK 类型全部从 npm 上的 `@deepseek-ai/*` 解析，**不依赖宿主源码
    `simple-icons` 从 14 起取消了逐图标具名导出，14/15 无法满足该导入形式。
 3. **新增 `pnpm-lock.yaml`**。上游的锁文件覆盖全仓数百个包，不适用于单包工作区；
    本仓的锁文件由本工作区独立安装生成。
+4. **`packages/dsh-remote-web-ui/lib/` 随仓提交**。上游 `.gitignore` 把 `lib/` 排除，
+   只留源码；但 `main` 指向 `lib/index.js`，而 `link:` 安装不会执行构建——这正是
+   「装上了但用不起来」的根因。故本仓把已验证可用的构建产物一并纳入版本控制，
+   并在 `.gitignore` 里为它开例外（其余包的 `lib/` 仍被忽略）。
 
-除上述三项，`packages/dsh-remote-web-ui/` 下的文件与上游 `v0.4.13` 一致
+除上述四项，`packages/dsh-remote-web-ui/` 下的文件与上游 `v0.4.13` 一致
 （`cordis.patch.yml`、`locale/`、`assets/`、`icon.svg` 全部原样保留），
 **唯一的源码改动**见下一节。
 
@@ -122,6 +126,40 @@ headers['accept-encoding'] = 'identity'
 
 ## 使用
 
+### 仓库自带预构建产物（克隆即可加载）
+
+包的 `main` 指向 `lib/index.js`，而 `lib/` 原本是构建产物、被 `.gitignore` 排除。
+所以只带源码的分支克隆下来**装得上但用不起来**：`dsh plugin add link:<path>` 只是建软链，
+不会替你跑 `prepare` / `build`，`lib/` 不存在 → 主入口解析失败，插件面板里什么都没有。
+
+本仓直接附带一份**已在设备上验证通过**的 `lib/`：
+
+| 文件 | 大小 | sha256 |
+|---|---|---|
+| `lib/index.js` | 638,765 B | `7f2466cf…f148` |
+| `lib/client.js` | 286,355 B | `2428d160…c0ed` |
+
+它与你手机扫码实际跑通的那一份逐字节相同（`cmp` 无差异），且已含下文的编码修复。
+克隆后可直接：
+
+```bash
+dsh plugin --profile <profile> add link:$PWD/packages/dsh-remote-web-ui
+```
+
+自检三条，都应命中：
+
+```bash
+grep -c 'LOCAL PATCH (encoding fix)' packages/dsh-remote-web-ui/lib/index.js        # 1
+grep -c 'accept-encoding"\] = "identity"' packages/dsh-remote-web-ui/lib/index.js   # 1
+sha256sum packages/dsh-remote-web-ui/lib/index.js                                   # 7f2466cf…f148
+```
+
+> 附带说明：本仓 `lib/` 来自 npm 0.4.13 的发布构建 + 就地修复，与你本地 `pnpm build`
+> 出来的产物在体积上不同（本地构建约 317 KB），因为打包配置不同。**以随仓附带、
+> 已在真机上验证的这份为准**；自己重建会用新产物覆盖它，记得连同改动一起提交。
+
+### 从源码构建
+
 ```bash
 # 需要 Node ^22.19.0 || >=24，以及 pnpm 11
 corepack enable pnpm
@@ -146,9 +184,9 @@ dsh plugin --profile <profile> add @linxin666/dsh-remote-web-ui@0.4.13
 
 ### 装 npm 预构建包时，补丁要单独打到 `lib/index.js`
 
-源码修复只对 `pnpm build` 出来的产物生效。若走上面的方式 B，装的是作者预构建的 `lib/`，
-里面仍是未修复的版本；插件升级也会把 `lib/index.js` 覆盖回原样。此时用仓内脚本对
-**已安装的那份副本**打补丁：
+本仓自带的 `lib/` 已含修复，**从本仓安装不必再跑脚本**。脚本针对另一种情况：
+按上面的方式 B 装 npm 上未修复的 `0.4.13`，或插件升级把 `lib/index.js` 覆盖回原样。
+此时用仓内脚本对**已安装的那份副本**打补丁：
 
 ```bash
 bash scripts/fix-remote-web-ui-encoding.sh                # 默认 desktop profile

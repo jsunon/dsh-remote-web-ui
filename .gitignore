@@ -1,8 +1,9 @@
 # 依赖
 node_modules/
 
-# 构建产物
+# 构建产物（例外：本包仓库自带预构建 lib，见 README「预构建产物」）
 packages/*/lib/
+!/packages/dsh-remote-web-ui/lib/
 *.tsbuildinfo
 
 # 测试与覆盖率
